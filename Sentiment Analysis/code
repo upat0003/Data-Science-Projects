@@ -1,1 +1,290 @@
+R code:
+install.packages("reshape2")
+install.packages("ggplot2")
+library(reshape2)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(lubridate)
+library(ggpubr)
+library(igraph)
+library(igraphdata)
+library(network)
+library(sna)
 
+
+#Task-1: Graph-1
+#clean the data and generate the new datasets with the random sample size 20,000
+rm(list = ls())
+set.seed(29143926) # XXXXXXXX = your student ID
+webforum <- read.csv("webforum.csv")
+
+#removing anonymose auther and zero word posts from the data
+webforum <- subset(webforum, AuthorID != -1)
+webforum <- subset(webforum, WC != 0)
+
+webforum <- webforum [sample(nrow(webforum), 20000), ] # 20000 rows
+
+webforum$Date <- as.Date(webforum$Date)
+webforum$Year <- format(webforum$Date, "%Y")
+webforum$MonthYear <- format(webforum$Date, "%Y-%m")
+
+#1.1
+#Using the author ids to to group into by year
+posted_by_auther <- as.table(by(webforum,webforum$Year,nrow))
+posted_by_auther <- as.data.frame(posted_by_auther)
+mean(posted_by_auther$Freq)
+
+#Trend for author frequencies vs year
+plot(posted_by_auther$webforum.Year,posted_by_auther$Freq, main="Overall Posts Trend For All Authors",
+ xlab="Year", ylab="Number of Posts")
+lines(posted_by_auther$webforum.Year,posted_by_auther$Freq)
+
+#Get the id for the maximum posts by the auther
+counting_Author <- as.data.frame(table(webforum$AuthorID))
+counting_Author <- counting_Author[order(-counting_Author$Freq), ]
+
+max_auther_id <- counting_Author[which.max(counting_Author$Freq), 1]
+m <- mean(counting_Author$Freq)
+
+authr_top <- webforum[webforum$AuthorID %in% max_auther_id,]
+author_with_most_posts <- as.table(by(authr_top,authr_top$Year,nrow))
+author_with_most_posts <- as.data.frame(author_with_most_posts)
+
+#plotting values for maximum autor only
+plot(author_with_most_posts$authr_top.Year,author_with_most_posts$Freq, main="Overall Posts Trend For Top Author",
+ xlab="Year", ylab="Number of Posts")
+lines(author_with_most_posts$authr_top.Year,author_with_most_posts$Freq)
+
+#-------------------------------------------------
+#Applying the regression for the year 2006 for the Affect variable to see the linear relationship
+web_2006<-authr_top[authr_top$Year=="2006",]
+
+delete_columns <- c("ThreadID","AuthorID","Date","Time","MonthYear","Year")
+web_2006 <- web_2006[,!(names(web_2006) %in% delete_columns)]
+
+attach(web_2006)
+authr_top.model <- lm(affect~.,data = web_2006)
+
+author_plot <- ggplot(data=web_2006, aes(x=posemo,y=affect))+geom_point()
+fitted <- coef(lm(affect~posemo,data = web_2006))
+author_plot + geom_abline(intercept = 1.7836, slope=0.98135)
+cor(web_2006$affect,web_2006$posemo)
+
+author_plot2 <- ggplot(data=web_2006, aes(x=negemo,y=affect),labs(subtitle="Affect vs Nege- correlation:0.5564"))+geom_point()
+fitted <- coef(lm(affect~negemo,data = web_2006))
+author_plot2 + geom_abline(intercept = 3.4392, slope=1.0501)
+cor(web_2006$affect,web_2006$negemo)
+
+#---------------------------------------------------------------------------------------------------------------
+#Appendix[2]
+# Frequency of unique threads
+counting_threads <- as.data.frame(table(webforum$ThreadID))
+counting_threads <- counting_threads[order(-counting_threads$Freq), ]
+
+thread_id_with_maxposts <- counting_threads[which.max(counting_threads$Freq), 1]
+max_thread_posts <- webforum[webforum$ThreadID == thread_id_with_maxposts,]
+means_max_thread <- aggregate(max_thread_posts, list(max_thread_posts$Date), mean)
+
+# Remove columns we won't need to plot
+deleted_columns <- c("Time", "Date", "AuthorID", "ThreadID", "PostID", "WC", "Month", "MonthYear", "ppron", "i", "we", "you", "shehe", "they",
+"number", "affect", "posemo", "negemo", "anx", "anger", "social", "family", "friend", "leisure", "money", "relig", "swear", "Qmark")
+means_max_thread <- means_max_thread[ , !(names(means_max_thread) %in% deleted_columns)]
+
+# Melting data to get into format to get plotted
+melted_means_max_thread<- melt(means_max_thread, id="Group.1")
+
+# Plot variables against time
+ggplot(melted_means_max_thread, aes(x=melted_means_max_thread$Group.1, y=melted_means_max_thread$value, colour=variable)) +
+geom_line(size=0.2) + labs(x="Date", y="Value")
+
+
+#--------------------------------------------------------------------------
+#--------------------------------Task-2------------------------------------------------
+#--------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------
+#2.1
+#get the frequency for the threads in the data and ordering them to extract top-5 for further analysis
+counting_threads <- as.data.frame(table(webforum$ThreadID))
+counting_threads <- counting_threads[order(-counting_threads$Freq),]
+summary(counting_threads)
+
+head(counting_threads)
+
+top_threads <- as.numeric(as.character(head(counting_threads$Var1, n=5)))
+top_threads <- webforum[webforum$ThreadID %in% top_threads,]
+
+keep_columns <- c("Analytic", "Tone", "Clout", "Authentic", "Group.1")
+
+#Get the mean average for the whole data and grouped by thread_id
+top_threads_averages <- aggregate(top_threads, list(top_threads$ThreadID), mean)
+top_threads_averages <- top_threads_averages[, (names(top_threads_averages) %in% keep_columns)]
+top_threads_averages_melted <- melt(top_threads_averages, id="Group.1")
+
+labels <- c("Thread: 127115", "Thread: 145223", "Thread: 252620", "Thread: 283958", "Thread: 472752", "Thread: 127115", "Thread: 145223",
+"Thread: 252620", "Thread: 283958", "Thread: 472752", "Thread: 127115", "Thread: 145223", "Thread: 252620", "Thread: 283958", "Thread:
+472752", "Thread: 127115", "Thread: 145223", "Thread: 252620", "Thread: 283958", "Thread: 472752")
+
+ggplot(data = top_threads_averages_melted, aes(x = seq(1:length(top_threads_averages_melted$value)), y =
+top_threads_averages_melted$value, fill = top_threads_averages_melted$variable)) +
+ geom_bar(stat = 'identity', position = 'dodge') +
+ theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) +
+ geom_text(aes(label=labels), angle =90, hjust=2) +
+ scale_fill_discrete(name = "Language") +
+ xlab("Threads") +
+ ylab("Average of the language proportions")+
+ ggtitle("Language variations in threads")
+ 
+#--------------------------------------------------------------------------------------------------------------------------------------------------
+#2.2
+
+#Extracting the top 5 frequent authors
+counting_Author <- as.data.frame(table(webforum$AuthorID))
+counting_Author <- counting_Author[order(-counting_Author$Freq), ]
+
+authr_top_top_5 <- as.numeric(as.character(head(counting_Author$Var1, n=5)))
+authr_top_top_5_posts <- webforum[webforum$AuthorID %in% authr_top_top_5,]
+
+#The remaining author values
+remaining <- counting_Author[counting_Author$Freq<300,]
+remaining_Auth <- webforum[webforum$AuthorID %in% remaining$Var1,]
+
+#mean for the values and storing them
+top5mean <- as.data.frame(colMeans(authr_top_top_5_posts[6:10]))
+colnames(top5mean) <- c("mean")
+
+remaining_mean <- as.data.frame(colMeans(remaining_Auth[6:10]))
+colnames(remaining_mean) <- c("mean")
+
+variables <- c("Analytic", "Clout", "Authentic", "Tone")
+
+top5summary <- top5mean[c(2:5),]
+top5summary <- data.frame(variables, top5summary)
+colnames(top5summary) <- c("variables", "means")
+
+remaining_summary <- remaining_mean[c(2:5),]
+remaining_summary <- data.frame(variables, remaining_summary)
+colnames(remaining_summary) <- c("variables", "means")
+
+#Histogram plotting
+ggplot(top5summary, aes(variables, means, fill = variables)) +
+ geom_bar(stat = "identity") +
+ labs(x = "Variables", y = "Mean", title = "Top 5 Authors Summary")
+
+ggplot(remaining_summary, aes(variables, means, fill = variables)) +
+ geom_bar(stat = "identity") +
+ labs(x = "Variables", y = "Mean", title = "Remaining Users Summary")
+
+#t-test to determine what's the greater value
+t.test(authr_top_top_5_posts$Authentic, remaining$Authentic, "greater", conf.level = 0.99)
+t.test(authr_top_top_5_posts$Clout, remaining$Clout, "greater", conf.level = 0.99)
+
+authr_top_top_5_posts$Year <- format(authr_top_top_5_posts$Date, "%Y")
+
+by_year <- aggregate(authr_top_top_5_posts, list(authr_top_top_5_posts$Year), mean) 
+
+keep_columns <- c("Group.1", "Analytic", "Clout", "Tone", "Authentic")
+by_year <- by_year[ , (names(by_year) %in% keep_columns)]
+authr_top_thread_averages <- melt(by_year, id="Group.1")
+
+authr_top_thread_averages$value <- format(round(authr_top_thread_averages$value, 2), nsmall = 2)
+
+#Appendix[2]
+
+ggplot(data= authr_top_thread_averages, aes(x=Group.1, y=authr_top_thread_averages$value, colour=variable, group=variable)) +
+ geom_line() +
+ theme(axis.text.x = element_text(angle = 90, vjust=0.5)) +
+ theme(plot.title = element_text(hjust = 0.5))+
+ ggtitle("The most active posts")+
+ xlab("Month-year") +
+ ylab("Linguistic Variable")
+
+#--------------------------------------------
+#2.3
+#plotting hour by hour after changing the time format to hour
+webforum$Date <- as.Date(webforum$Date)
+webforum$Day <- weekdays(webforum$Date)
+webforum$Hour <- substr(webforum$Time, 1, 2)
+webforum <- webforum[order(webforum$Day), ]
+webforum$Month <- format(webforum$Date, "%Y-%m")
+keep_columns <- c("Analytic", "WC", "Clout", "Authentic", "Tone", "Group.1")
+
+by_hour <- aggregate(webforum, by=list(webforum$Hour), mean)
+by_hour <- by_hour[ , (names(by_hour) %in% keep_columns)]
+by_hour <- melt(by_hour, id="Group.1")
+
+ggplot(by_hour, aes(x=Group.1, y=value, colour=variable, group=variable)) + geom_line() + xlab("Hour of the Day") + ylab("")
+
+
+#-----------------------------------------
+#3.1*
+#----------------------------------------
+
+#Performing analysis for march,2006 Sundays and getting substring data for it
+webforum$Year <- format(webforum$Date, "%Y")
+webforum$MonthYear <- format(webforum$Date, "%Y-%m")
+webforum$Day <- weekdays(webforum$Date)
+webforum$Hour <- substr(webforum$Time, 1, 2)
+
+no_post <- as.table(by(webforum,webforum$Year,nrow))
+no_post<-as.data.frame(no_post)
+
+web_2006<-webforum[webforum$Year=="2006",]
+no_post2<-as.table(by(web_2006,web_2006$MonthYear,nrow))
+no_post2<-as.data.frame(no_post2)
+web_2006_03<-webforum[webforum$MonthYear=="2006-03",]
+no_post3<-as.table(by(web_2006_03,web_2006_03$Date,nrow))
+no_post3<-as.data.frame(no_post3)
+
+web_2006_day <- web_2006_03[(web_2006_03$Day=="Sunday"),]
+web_2006_day <- select(web_2006_day, AuthorID,ThreadID)
+
+#inner joing the auther and thread id data to get the data into adjacency form later
+g1 <- dplyr::inner_join(web_2006_day, web_2006_day, by = "ThreadID")[,-1]
+g2 <- apply(g1, 2, as.character) #AuthorID as character will become vertex ID
+
+library(network)
+G <- network(g2, directed = FALSE)
+adjMatrix1 <- as.sociomatrix(G)
+adjEdge <- as.edgelist(G)
+plot(G, label = G%v%"vertex.names")
+
+#Finding all the graph related values like degree, betweenness, closeness, diameter
+degree = as.table(degree(adjMatrix1))
+betweenness = as.table(betweenness(adjMatrix1))
+
+#closeness = as.table(closeness(adjMatrix1))
+eig = as.table(evcent(adjMatrix1))
+
+#averagePath = average.path.length(G)
+#diameter = diameter(G)
+tabularised = as.data.frame(rbind(degree, betweenness, eig))
+tabularised= t(tabularised)
+
+#----------------------------------------------------------------
+#Performing analysis for march,2006 Mondays and getting substring data for it
+web_2006_Monday <- web_2006_03[(web_2006_03$Day=="Monday"),]
+web_2006_Monday <- select(web_2006_Monday, AuthorID,ThreadID)
+
+#inner joing the auther and thread id data to get the data into adjacency form later
+h1 <- dplyr::inner_join(web_2006_Monday, web_2006_Monday, by = "ThreadID")[,-1]
+h2 <- apply(h1, 2, as.character) #AuthorID as character will become vertex ID
+
+library(network)
+H <- network(h2, directed = FALSE)
+adjMatrix2 <- as.sociomatrix(H)
+adjEdge2 <- as.edgelist(H)
+plot(H, label = H%v%"vertex.names")
+
+#Finding all the graph related values like degree, betweenness, closeness, diameter
+degree = as.table(degree(adjMatrix2))
+betweenness = as.table(betweenness(adjMatrix2))
+#closeness = as.table(closeness(adjMatrix2))
+eig = as.table(evcent(adjMatrix2))
+
+#averagePath2 = average.path.length(H)
+#diameter = diameter(H)
+
+tabularised2 = as.data.frame(rbind(degree, betweenness, eig))
+tabularised2 = t(tabularised2)
