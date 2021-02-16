@@ -1,7 +1,7 @@
 rm(list = ls())
 WAUS <- read.csv("WAUS2020.csv")
 L <- as.data.frame(c(1:49))
-set.seed(29143926) # Your Student ID is the random seed
+set.seed(29143926) # random seed
 L <- L[sample(nrow(L), 10, replace = FALSE),] # sample 10 locations
 WAUS <- WAUS[(WAUS$Location %in% L),]
 WAUS <- WAUS[sample(nrow(WAUS), 2000, replace = FALSE),] # sample 2000 rows
